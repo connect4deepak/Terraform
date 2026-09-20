@@ -1,0 +1,86 @@
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = var.region
+}
+
+resource "aws_vpc"  "myvpc" {
+  cidr_block = var.vpc_cidr
+  tags = {
+    Name = "my-vpc"
+  }
+}
+
+resource "aws_subnet" "private_subnet" {
+  vpc_id     = aws_vpc.myvpc.id
+  cidr_block = "10.0.1.0/24"
+  tags = {
+    Name = "private-subnet"
+  }
+}
+
+resource "aws_subnet" "public_subnet" {
+  vpc_id     = aws_vpc.myvpc.id
+  cidr_block = "10.0.2.0/24"
+  tags = {
+    Name = "public-subnet"
+  }
+}   
+
+resource "aws_internet_gateway" "my_igw" {
+  vpc_id = aws_vpc.myvpc.id
+  tags = {
+    Name = "my-igw"
+  }
+}
+
+resource "aws_route_table" "public_route_table" {
+  vpc_id = aws_vpc.myvpc.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.my_igw.id
+  }
+}
+
+resource "aws_route_table_association" "public_subnet_association" {
+  subnet_id      = aws_subnet.public_subnet.id
+  route_table_id = aws_route_table.public_route_table.id
+}   
+
+resource "aws_security_group" "my_security_group" {
+  name        = "my-security-group"
+  description = "Allow SSH and HTTP access"
+  vpc_id      = aws_vpc.myvpc.id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/8"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_instance" "my_instance" {
+  ami           = var.ami
+  instance_type = var.instance_type
+  subnet_id     = aws_subnet.private_subnet.id
+  security_groups = [aws_security_group.my_security_group.id]
+
+  tags = {
+    Name = var.instance_name
+  }
+}
